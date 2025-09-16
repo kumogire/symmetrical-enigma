@@ -1,0 +1,12 @@
+# JWT Distribution System - Keeper Secrets Manager
+# Python dependencies
+
+# Keeper Secrets Manager
+keeper-secrets-manager-core>=16.6.0
+
+# JWT handling
+PyJWT>=2.4.0
+
+# Additional utilities (optional)
+requests>=2.25.0
+python-dateutil>=2.8.0
