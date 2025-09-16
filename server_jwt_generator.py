@@ -128,12 +128,7 @@ def upload_jwt_to_keeper(token, payload):
 def send_notification():
     """Send notification to API Engineers team"""
     
-    # Note: KSM doesn't have built-in notification capabilities
-    # In practice, you might integrate with:
-    # - Slack API
-    # - Microsoft Teams
-    # - Email service
-    # - Internal notification system
+        # In a real-world scenario, this could be an email, Slack message, etc.
     
     notification_message = {
         "timestamp": datetime.datetime.utcnow().isoformat(),
