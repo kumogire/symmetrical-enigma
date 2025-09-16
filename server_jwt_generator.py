@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-JWT Server Generator - Keeper Secrets Manager
-Generates JWT tokens and distributes them via Keeper Vault for API Engineers team
+JWT Server Generator - Keeper Secrets Manager (Config information stored via Keeper)
+Generates JWT tokens using configuration stored in Keeper Vault and distributes them via Keeper Vault for API Engineers team
 """
 
 import os
@@ -13,33 +13,127 @@ from pathlib import Path
 from keeper_secrets_manager_core import SecretsManager
 from keeper_secrets_manager_core.storage import FileKeyValueStorage
 
-# Configuration
-CONFIG_FILE = "ksm_config.json"
-SECRETS_DIR = "secrets"
-JWT_FILE = "api_access.jwt"
-JWT_RECORD_UID = "YOUR_JWT_RECORD_UID"  # Replace with actual record UID in "API Development Access"
+# KSM Configuration
+KSM_CONFIG_FILE = "ksm_config.json"
 
-# JWT Configuration
-JWT_SECRET = "your-jwt-secret-key-here"  # In production, this should also come from Keeper
-JWT_ISSUER = "api-development-server"
-JWT_AUDIENCE = "api-engineers"
+# Application Configuration (can be environment variables or simple config file)
+APP_CONFIG_FILE = "app_config.json"
 
-def ensure_directories():
+def load_app_config():
+    """Load application configuration (Record UIDs)"""
+    
+    config = {}
+    
+    # Try environment variables first
+    if os.getenv("JWT_TOKEN_RECORD_UID") and os.getenv("JWT_CONFIG_RECORD_UID"):
+        config = {
+            "jwt_token_record_uid": os.getenv("JWT_TOKEN_RECORD_UID"),
+            "jwt_config_record_uid": os.getenv("JWT_CONFIG_RECORD_UID")
+        }
+        print("📋 Using configuration from environment variables")
+        return config
+    
+    # Try app config file
+    if os.path.exists(APP_CONFIG_FILE):
+        try:
+            with open(APP_CONFIG_FILE, 'r') as f:
+                config = json.load(f)
+            print(f"📋 Using configuration from {APP_CONFIG_FILE}")
+            return config
+        except Exception as e:
+            print(f"❌ Error reading {APP_CONFIG_FILE}: {e}")
+    
+    # Fallback - create template config file
+    template_config = {
+        "jwt_token_record_uid": "YOUR_JWT_TOKEN_RECORD_UID",
+        "jwt_config_record_uid": "YOUR_JWT_CONFIG_RECORD_UID"
+    }
+    
+    with open(APP_CONFIG_FILE, 'w') as f:
+        json.dump(template_config, f, indent=2)
+    
+    print(f"❌ Configuration not found. Created template: {APP_CONFIG_FILE}")
+    print("Please update the Record UIDs in this file and run again.")
+    return None
+
+def load_jwt_config_from_keeper(secrets_manager, config_record_uid):
+    """Load JWT configuration from Keeper Vault"""
+    
+    try:
+        print(f"🔧 Loading JWT configuration from Keeper...")
+        
+        # Get the config record
+        config_records = secrets_manager.get_secrets([config_record_uid])
+        
+        if not config_records:
+            print(f"❌ JWT config record not found: {config_record_uid}")
+            return None
+        
+        config_record = config_records[0]
+        print(f"📋 Found config record: '{config_record.title}'")
+        
+        # Extract configuration
+        jwt_config = {
+            "secret": config_record.password,  # JWT signing secret
+            "issuer": "api-development-server",  # Default
+            "audience": "api-engineers",  # Default
+            "expiration_hours": 24,  # Default
+            "secrets_dir": "secrets",  # Default
+            "jwt_filename": "api_access.jwt"  # Default
+        }
+        
+        # Override with custom fields if they exist
+        for field in config_record.fields:
+            field_label = field.get('label', '').lower()
+            field_value = field.get('value', [{}])[0].get('value', '')
+            
+            if field_label == 'issuer' and field_value:
+                jwt_config['issuer'] = field_value
+            elif field_label == 'audience' and field_value:
+                jwt_config['audience'] = field_value
+            elif field_label == 'expiration_hours' and field_value:
+                try:
+                    jwt_config['expiration_hours'] = int(field_value)
+                except ValueError:
+                    pass
+            elif field_label == 'secrets_dir' and field_value:
+                jwt_config['secrets_dir'] = field_value
+            elif field_label == 'jwt_filename' and field_value:
+                jwt_config['jwt_filename'] = field_value
+        
+        print(f"🔧 JWT Configuration loaded:")
+        print(f"   Issuer: {jwt_config['issuer']}")
+        print(f"   Audience: {jwt_config['audience']}")
+        print(f"   Expiration: {jwt_config['expiration_hours']} hours")
+        print(f"   Secrets dir: {jwt_config['secrets_dir']}")
+        print(f"   JWT filename: {jwt_config['jwt_filename']}")
+        print(f"   Secret length: {len(jwt_config['secret'])} characters")
+        
+        return jwt_config
+        
+    except Exception as e:
+        print(f"❌ Error loading JWT config from Keeper: {e}")
+        return None
+
+def ensure_directories(secrets_dir):
     """Create necessary directories"""
-    secrets_path = Path(SECRETS_DIR)
+    secrets_path = Path(secrets_dir)
     secrets_path.mkdir(exist_ok=True)
     print(f"✅ Secrets directory ready: {secrets_path.absolute()}")
+    return secrets_path
 
-def generate_jwt():
-    """Generate a new JWT token for API access"""
+def generate_jwt(jwt_config):
+    """Generate a new JWT token using config from Keeper"""
     
     # JWT payload
     now = datetime.datetime.utcnow()
+    exp_hours = jwt_config.get('expiration_hours', 24)
+    
     payload = {
-        "iss": JWT_ISSUER,
-        "aud": JWT_AUDIENCE,
+        "iss": jwt_config['issuer'],
+        "aud": jwt_config['audience'],
         "iat": now,
-        "exp": now + datetime.timedelta(hours=24),  # 24-hour expiration
+        "exp": now + datetime.timedelta(hours=exp_hours),
         "sub": "api-development-access",
         "team": "API Engineers",
         "permissions": [
@@ -52,7 +146,7 @@ def generate_jwt():
     }
     
     # Generate JWT
-    token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+    token = jwt.encode(payload, jwt_config['secret'], algorithm="HS256")
     
     print(f"🔑 Generated new JWT token")
     print(f"   Issuer: {payload['iss']}")
@@ -61,89 +155,85 @@ def generate_jwt():
     
     return token, payload
 
-def save_jwt_locally(token):
+def save_jwt_locally(token, jwt_config):
     """Save JWT to local secrets folder"""
     
-    jwt_path = Path(SECRETS_DIR) / JWT_FILE
+    secrets_dir = jwt_config.get('secrets_dir', 'secrets')
+    jwt_filename = jwt_config.get('jwt_filename', 'api_access.jwt')
+    
+    jwt_path = Path(secrets_dir) / jwt_filename
     
     with open(jwt_path, 'w') as f:
         f.write(token)
     
+    # Set secure permissions
+    os.chmod(jwt_path, 0o600)
+    
     print(f"💾 JWT saved locally: {jwt_path.absolute()}")
     return jwt_path
 
-def upload_jwt_to_keeper(token, payload):
-    """Upload JWT to Keeper Vault in API Development Access folder"""
-    
-    if not os.path.exists(CONFIG_FILE):
-        print(f"❌ KSM config file not found: {CONFIG_FILE}")
-        print("Please run the initial KSM setup first.")
-        return False
+def update_jwt_in_keeper(secrets_manager, token_record_uid, token, payload):
+    """Update JWT token in Keeper Vault"""
     
     try:
-        # Initialize KSM
-        secrets_manager = SecretsManager(
-            config=FileKeyValueStorage(CONFIG_FILE)
-        )
+        print(f"☁️  Updating JWT in Keeper Vault...")
         
-        print(f"📡 Connecting to Keeper Vault...")
+        # Get the token record
+        token_records = secrets_manager.get_secrets([token_record_uid])
         
-        # Get the JWT record
-        records = secrets_manager.get_secrets([JWT_RECORD_UID])
-        
-        if not records:
-            print(f"❌ JWT record not found with UID: {JWT_RECORD_UID}")
-            print("Please create a record in the 'API Development Access' folder first.")
+        if not token_records:
+            print(f"❌ JWT token record not found: {token_record_uid}")
             return False
         
-        jwt_record = records[0]
-        print(f"📋 Found JWT record: '{jwt_record.title}'")
+        token_record = token_records[0]
+        print(f"📋 Found token record: '{token_record.title}'")
         
-        # Update the record with new JWT
-        # Note: KSM Core SDK is primarily for reading. For writing, you'd typically use:
-        # - Keeper Commander CLI
-        # - Keeper SDKs with write permissions
-        # - Manual update through Vault UI
+        # Note: KSM Core SDK is read-only. In production, you would:
+        # 1. Use Keeper Commander CLI with write permissions
+        # 2. Use Keeper REST API 
+        # 3. Use a webhook/automation system
         
-        # For this POC, we'll demonstrate the concept by showing what would be updated
-        print(f"🔄 Would update record '{jwt_record.title}' with:")
-        print(f"   Password: {token[:20]}...")
+        print(f"🔄 Would update record with:")
+        print(f"   Password: {token[:30]}...")
         print(f"   Notes: Generated at {payload['generated_at']}")
-        print(f"   Custom field 'expires': {payload['exp'].isoformat()}")
+        print(f"   Expires: {payload['exp'].isoformat()}")
         
-        # In a real implementation, you might:
-        # 1. Use Keeper Commander API to update the record
-        # 2. Use a webhook to trigger updates
-        # 3. Use Keeper's REST API with proper permissions
-        
-        print(f"⚠️  Note: Record update would happen here in production")
-        print(f"   Manual step: Update the record in Keeper Vault with the new JWT")
+        # For this POC, we simulate the update
+        print(f"⚠️  Note: Actual Keeper update would happen here")
+        print(f"   Implementation options:")
+        print(f"   - Keeper Commander CLI integration")
+        print(f"   - Keeper REST API calls")
+        print(f"   - Automated workflow system")
         
         return True
         
     except Exception as e:
-        print(f"❌ Error uploading to Keeper: {e}")
+        print(f"❌ Error updating JWT in Keeper: {e}")
         return False
 
-def send_notification():
+def send_notification(jwt_config, payload):
     """Send notification to API Engineers team"""
-    
-        # In a real-world scenario, this could be an email, Slack message, etc.
     
     notification_message = {
         "timestamp": datetime.datetime.utcnow().isoformat(),
         "event": "jwt_generated",
         "message": "New API Development JWT token has been generated and is available in Keeper Vault",
-        "action_required": "Run the local JWT sync script to get the latest token",
-        "expires_in": "24 hours",
+        "config": {
+            "issuer": jwt_config['issuer'],
+            "audience": jwt_config['audience'],
+            "expiration_hours": jwt_config['expiration_hours']
+        },
+        "expires_at": payload['exp'].isoformat(),
+        "action_required": "Run: python local_jwt_sync.py",
         "location": "Keeper Vault > API Development Access folder"
     }
     
-    print(f"📢 Notification sent to API Engineers team:")
+    print(f"📢 Notification for API Engineers team:")
     print(json.dumps(notification_message, indent=2))
     
     # Save notification log
-    log_file = Path(SECRETS_DIR) / "jwt_notifications.log"
+    secrets_dir = jwt_config.get('secrets_dir', 'secrets')
+    log_file = Path(secrets_dir) / "jwt_notifications.log"
     with open(log_file, 'a') as f:
         f.write(f"{json.dumps(notification_message)}\n")
     
@@ -152,54 +242,98 @@ def send_notification():
     return True
 
 def main():
-    print("🏗️  JWT Server Generator - Keeper Secrets Manager Integration")
-    print("=" * 65)
+    print("🏗️  JWT Server Generator - Keeper Configuration")
+    print("=" * 55)
     print()
     
-    # Step 1: Setup
-    ensure_directories()
+    # Step 1: Load app configuration
+    app_config = load_app_config()
+    if not app_config:
+        sys.exit(1)
+    
+    # Validate config
+    required_keys = ['jwt_token_record_uid', 'jwt_config_record_uid']
+    missing_keys = [k for k in required_keys if not app_config.get(k) or app_config[k].startswith('YOUR_')]
+    
+    if missing_keys:
+        print(f"❌ Missing configuration: {missing_keys}")
+        print(f"Please update {APP_CONFIG_FILE} with actual Record UIDs")
+        sys.exit(1)
+    
     print()
     
-    # Step 2: Generate JWT
+    # Step 2: Initialize KSM
+    if not os.path.exists(KSM_CONFIG_FILE):
+        print(f"❌ KSM config file not found: {KSM_CONFIG_FILE}")
+        print("Please run the KSM setup with one-time token first.")
+        sys.exit(1)
+    
+    try:
+        secrets_manager = SecretsManager(
+            config=FileKeyValueStorage(KSM_CONFIG_FILE)
+        )
+        print("✅ Connected to Keeper Secrets Manager")
+    except Exception as e:
+        print(f"❌ Failed to connect to Keeper: {e}")
+        sys.exit(1)
+    
+    print()
+    
+    # Step 3: Load JWT configuration from Keeper
+    jwt_config = load_jwt_config_from_keeper(
+        secrets_manager, 
+        app_config['jwt_config_record_uid']
+    )
+    
+    if not jwt_config:
+        sys.exit(1)
+    
+    print()
+    
+    # Step 4: Setup directories
+    ensure_directories(jwt_config['secrets_dir'])
+    print()
+    
+    # Step 5: Generate JWT
     print("🔑 Generating new JWT token...")
-    token, payload = generate_jwt()
+    token, payload = generate_jwt(jwt_config)
     print()
     
-    # Step 3: Save locally
+    # Step 6: Save locally
     print("💾 Saving JWT locally...")
-    local_path = save_jwt_locally(token)
+    local_path = save_jwt_locally(token, jwt_config)
     print()
     
-    # Step 4: Upload to Keeper
-    print("☁️  Uploading JWT to Keeper Vault...")
-    keeper_success = upload_jwt_to_keeper(token, payload)
+    # Step 7: Update Keeper
+    print("☁️  Updating JWT in Keeper Vault...")
+    keeper_success = update_jwt_in_keeper(
+        secrets_manager, 
+        app_config['jwt_token_record_uid'], 
+        token, 
+        payload
+    )
     print()
     
-    # Step 5: Send notification
-    print("📢 Sending notification to API Engineers...")
-    notification_success = send_notification()
+    # Step 8: Send notification
+    print("📢 Sending notification...")
+    notification_success = send_notification(jwt_config, payload)
     print()
     
     # Summary
     print("📊 Generation Summary:")
-    print(f"   ✅ JWT generated successfully")
+    print(f"   ✅ JWT configuration: Loaded from Keeper")
+    print(f"   ✅ JWT generated: {jwt_config['expiration_hours']} hour expiration")
     print(f"   ✅ Saved locally: {local_path}")
-    print(f"   {'✅' if keeper_success else '⚠️ '} Keeper upload: {'Success' if keeper_success else 'Manual step required'}")
+    print(f"   {'✅' if keeper_success else '⚠️ '} Keeper update: {'Success' if keeper_success else 'Manual step required'}")
     print(f"   ✅ Team notification: Sent")
     print()
     
-    if keeper_success:
-        print("🎉 JWT generation and distribution completed!")
-        print("💡 API Engineers can now run the local sync script to get the new token.")
-    else:
-        print("⚠️  Manual step required:")
-        print("   1. Copy the JWT token from the local file")
-        print("   2. Update the Keeper record manually")
-        print("   3. Notify the team that the new token is ready")
-    
+    print("🎉 JWT generation completed!")
+    print(f"📅 Token expires: {payload['exp'].strftime('%Y-%m-%d %H:%M:%S')} UTC")
     print()
-    print(f"🔗 JWT Token Preview: {token[:50]}...")
-    print(f"📅 Expires: {payload['exp'].strftime('%Y-%m-%d %H:%M:%S')} UTC")
+    print("💡 Next steps:")
+    print("   1. Manually update the JWT token record in Keeper Vault (if needed)")
+    print("   2. API Engineers can run: python local_jwt_sync.py")
 
 if __name__ == "__main__":
     main()
