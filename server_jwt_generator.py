@@ -294,18 +294,33 @@ def update_jwt_in_keeper(secrets_manager, token_record_uid, token, payload):
         token_record = token_records[0]
         print(f"📋 Found token record: '{token_record.title}'")
         
-        # Note: For production, you would use Keeper Commander CLI or REST API to update
-        print(f"🔄 Would update record with:")
-        print(f"   Password: {token[:30]}...")
-        print(f"   Notes: Generated at {payload['generated_at']}")
-        print(f"   Expires: {payload['exp'].isoformat()}")
-        
-        print(f"💡 To actually update the record:")
-        print(f"   1. Copy the JWT token from local file")
-        print(f"   2. Paste it into the Keeper record password field")
-        print(f"   3. Update the notes with generation timestamp")
-        
-        return True
+        try:
+            # Update the password field (main requirement)
+            token_record.field('password', value=token)
+            
+            # Try updating notes as a direct property instead of field
+            try:
+                notes = f"Generated: {payload['generated_at']}\nExpires: {payload['exp'].isoformat()}"
+                token_record.notes = notes  # Direct property assignment for notes
+                print(f"   Notes: Updated with generation info")
+            except Exception as notes_error:
+                print(f"   Notes: Skipped (not critical) - {notes_error}")
+            
+            # Save the changes
+            print(f"💾 Saving JWT to Keeper Vault...")
+            secrets_manager.save(token_record)
+            
+            print(f"✅ JWT successfully saved to Keeper!")
+            print(f"   Password: {token[:30]}...")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Failed to save JWT to Keeper: {e}")
+            print(f"💡 Fallback - Manual update required:")
+            print(f"   1. Copy JWT from: secrets/api_access.jwt")
+            print(f"   2. Paste into Keeper record password field")
+            return False
         
     except Exception as e:
         print(f"❌ Error updating JWT in Keeper: {e}")
@@ -324,7 +339,7 @@ def send_notification(jwt_config, payload):
             "expiration_hours": jwt_config['expiration_hours']
         },
         "expires_at": payload['exp'].isoformat(),
-        "action_required": "Run: python improved_local_jwt_sync.py",
+        "action_required": "Run: python3 local_jwt_sync.py",
         "location": "Keeper Vault > API Development Access folder"
     }
     
@@ -399,7 +414,7 @@ def main():
     local_path = save_jwt_locally(token, jwt_config)
     print()
     
-    # Step 7: Update Keeper (simulated)
+    # Step 7: Update Keeper
     print("☁️  Updating JWT in Keeper Vault...")
     keeper_success = update_jwt_in_keeper(
         secrets_manager, 
@@ -420,7 +435,7 @@ def main():
     print(f"   ✅ JWT configuration: Loaded from Keeper")
     print(f"   ✅ JWT generated: {jwt_config['expiration_hours']} hour expiration")
     print(f"   ✅ Saved locally: {local_path}")
-    print(f"   ⚠️  Keeper update: Manual step required")
+    print(f"   {'✅' if keeper_success else '⚠️ '} Keeper update: {'Success' if keeper_success else 'Manual step required'}")
     print(f"   ✅ Team notification: Sent")
     print()
     
@@ -428,8 +443,8 @@ def main():
     print(f"📅 Token expires: {payload['exp'].strftime('%Y-%m-%d %H:%M:%S')} UTC")
     print()
     print("💡 Next steps:")
-    print("   1. Manually update the JWT token record in Keeper Vault")
-    print("   2. API Engineers can run: python improved_local_jwt_sync.py")
+    print("   1. API Engineers can find the new JWT in Keeper Vault")
+    print("   2. API Engineers can run: python3 local_jwt_sync.py")
 
 if __name__ == "__main__":
     main()
