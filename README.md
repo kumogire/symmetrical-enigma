@@ -1,25 +1,33 @@
-# symmetrical-enigma
+# symmetrical-enigma (Keeper Secrets Manager based JWT distribution system)
 
 A secure JWT token distribution system for API Engineers using Keeper Secrets Manager for centralized credential management.
+**Application configuration stored in Keeper Vault** for complete centralized secret management.
+
 
 ## 🎯 System Overview
 
-This system provides secure JWT token distribution for the API Engineering team:
+The idea of this application is to make JWT token creation and distrubtion easier and more secure to manage.
 
-- **Server Side**: Generates JWT tokens and distributes them via Keeper Vault
-- **Local Side**: Engineers sync the latest JWT tokens from Keeper to their local environment
-- **Zero Hardcoded Secrets**: All tokens managed centrally in Keeper Vault
+**Zero hardcoded configuration** - Everything managed in Keeper Vault:
+- ✅ **JWT signing keys** stored in Keeper
+- ✅ **JWT configuration** (expiration, issuer, etc.) stored in Keeper  
+- ✅ **JWT tokens** distributed through Keeper
+- ✅ **Only Record UIDs** in application config (safe to commit)
 
 ## 📋 Architecture
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Server        │    │   Keeper Vault   │    │   Local Dev     │
-│                 │    │                  │    │                 │
-│ 1. Generate JWT ├───►│ 2. Store JWT     │◄───┤ 3. Retrieve JWT │
-│ 2. Save locally │    │ 3. Notify team   │    │ 4. Save locally │
-│ 3. Upload JWT   │    │                  │    │                 │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+┌─────────────────┐    ┌──────────────────────────┐    ┌─────────────────┐
+│   Server        │    │      Keeper Vault        │    │   Local Dev     │
+│                 │    │                          │    │                 │
+│ 1. Load config  ├───►│ JWT Config Record        │◄───┤ 1. Load config  │
+│ 2. Generate JWT │    │ • JWT signing secret     │    │ 2. Retrieve JWT │
+│ 3. Upload JWT   ├───►│ • Expiration, issuer     │    │ 3. Save locally │
+│                 │    │ • Directory settings     │    │                 │
+│                 │    │                          │    │                 │
+│                 │    │ JWT Token Record         │    │                 │
+│                 │    │ • Current JWT token      │    │                 │
+└─────────────────┘    └──────────────────────────┘    └─────────────────┘
 ```
 
 ## 🚀 Quick Setup
@@ -27,70 +35,76 @@ This system provides secure JWT token distribution for the API Engineering team:
 ### Prerequisites
 - Python 3.7+
 - Keeper Vault account with Secrets Manager enabled
-- Access to "API Development Access" folder in Keeper
+- Access to "API Development Access" folder
 
 ### Install Dependencies
 ```bash
 pip install keeper-secrets-manager-core PyJWT
 ```
 
-## 🔧 Initial Setup
+## 🔧 Keeper Vault Setup
 
-### 1. Keeper Vault Setup
-
-#### A. Create KSM Application
+### 1. Create KSM Application
 1. **Keeper Vault** → **Admin Console** → **Secrets Manager**
 2. **Create Application** → **General Purpose**
 3. **Application Name**: `JWT Distribution System`
 4. **Generate One-Time Token** (save this!)
 
-#### B. Create API Development Access Folder
-1. In Keeper Vault, create a **Shared Folder**: `API Development Access`
+### 2. Create Shared Folder
+1. Create folder: **`API Development Access`**
 2. **Share with**: API Engineers team
-3. **Permissions**: Read access for engineers, Write access for server
+3. **Permissions**: Read for engineers, Write for server
 
-#### C. Create JWT Record
-1. **Add Record** in the "API Development Access" folder
-2. **Record Type**: Login
-3. **Title**: `API Development JWT`
-4. **Password**: (will be populated by server script)
-5. **Save** and **copy the Record UID**
+### 3. Create Keeper Records
 
-### 2. Server Setup
+#### A. JWT Configuration Record
+1. **Add Record** in "API Development Access" folder
+2. **Title**: `JWT Configuration`
+3. **Password**: `your-super-secret-jwt-signing-key-256-bits` (JWT secret)
+4. **Custom Fields** (click "Add Field"):
+   - `issuer`: `your-api-server`
+   - `audience`: `your-api-engineers`
+   - `expiration_hours`: `24`
+   - `secrets_dir`: `secrets`
+   - `jwt_filename`: `api_access.jwt`
+5. **Save** and **copy Record UID**
 
-#### A. Configure Server Script
-1. Copy `server_jwt_generator.py` to your server
-2. Update configuration:
-   ```python
-   JWT_RECORD_UID = "your-actual-record-uid-here"
-   JWT_SECRET = "your-secure-jwt-signing-key"  # Store this in Keeper too!
-   ```
+#### B. JWT Token Record  
+1. **Add Record** in "API Development Access" folder
+2. **Title**: `JWT Token - Current`
+3. **Password**: (empty - will be populated by server)
+4. **Save** and **copy Record UID**
 
-#### B. Setup KSM on Server
-```bash
-# Run the server script first time
-python server_jwt_generator.py
+## 💻 Application Setup
 
-# Enter your one-time token when prompted
-# This creates ksm_config.json
+### 1. Configuration File Method
+
+Create `app_config.json`:
+```json
+{
+  "jwt_token_record_uid": "abc123-your-token-record-uid",
+  "jwt_config_record_uid": "def456-your-config-record-uid"
+}
 ```
 
-### 3. Local Developer Setup
-
-#### A. Configure Local Script
-1. Copy `local_jwt_sync.py` to each developer machine
-2. Update the Record UID:
-   ```python
-   JWT_RECORD_UID = "your-actual-record-uid-here"
-   ```
-
-#### B. Setup KSM Locally
+### 2. Environment Variables Method (Alternative)
 ```bash
-# Each developer runs this once
-python local_jwt_sync.py
+export JWT_TOKEN_RECORD_UID="abc123-your-token-record-uid"
+export JWT_CONFIG_RECORD_UID="def456-your-config-record-uid"
+```
 
-# Enter your one-time token when prompted
-# This creates ksm_config.json locally
+### 3. Initialize KSM Connection
+
+#### Server Setup:
+```bash
+python improved_server_jwt_generator.py
+# Enter one-time token when prompted
+```
+
+#### Local Developer Setup:
+```bash
+python improved_local_jwt_sync.py  
+# Enter one-time token when prompted
 ```
 
 ## 🔄 Daily Workflow
@@ -99,49 +113,67 @@ python local_jwt_sync.py
 
 #### Generate New JWT Token
 ```bash
-python server_jwt_generator.py
+python improved_server_jwt_generator.py
 ```
 
 **What happens:**
-1. ✅ Generates new 24-hour JWT token
-2. ✅ Saves to local `/secrets/api_access.jwt`
-3. ✅ Updates Keeper Vault record
-4. ✅ Logs notification for team
-5. ✅ Shows token expiration time
+1. ✅ Loads JWT config from Keeper (signing key, expiration, etc.)
+2. ✅ Generates JWT using Keeper-stored configuration
+3. ✅ Saves to local `/secrets/api_access.jwt`
+4. ✅ Updates JWT token record in Keeper Vault
+5. ✅ Logs notification for team
 
 ### Local Side (API Engineers)
 
-#### Sync Latest JWT Token
+#### Sync Latest JWT Token  
 ```bash
-python local_jwt_sync.py
+python improved_local_jwt_sync.py
 ```
 
 **What happens:**
-1. ✅ Backs up old JWT (if exists)
-2. ✅ Retrieves latest JWT from Keeper
-3. ✅ Saves to local `/secrets/api_access.jwt`
-4. ✅ Verifies token validity and expiration
-5. ✅ Sets secure file permissions (600)
+1. ✅ Loads JWT config from Keeper (file paths, etc.)
+2. ✅ Backs up old JWT (if exists)
+3. ✅ Retrieves latest JWT from Keeper
+4. ✅ Saves to configured local path
+5. ✅ Verifies token validity and expiration
 
 ## 📁 File Structure
 
 ```
 project/
-├── server_jwt_generator.py     # Server-side JWT generation
-├── local_jwt_sync.py          # Local JWT synchronization
-├── ksm_config.json           # KSM configuration (auto-generated)
-├── secrets/                  # Local secrets directory
-│   ├── api_access.jwt       # Current JWT token
-│   ├── api_access.jwt.backup.* # JWT backups
-│   └── jwt_notifications.log # Notification log
-└── README.md                # This file
+├── improved_server_jwt_generator.py   # Server-side JWT generation
+├── improved_local_jwt_sync.py        # Local JWT synchronization
+├── app_config.json                   # Application config (Record UIDs)
+├── ksm_config.json                   # KSM config (auto-generated)
+├── secrets/                          # Local secrets directory
+│   ├── api_access.jwt               # Current JWT token
+│   ├── api_access.jwt.backup.*      # JWT backups
+│   └── jwt_notifications.log        # Notification log
+└── README.md                        # This file
 ```
+
+## 🔧 Configuration Benefits
+
+### What's Safe to Commit:
+- ✅ Python scripts - No secrets embedded
+- ✅ `requirements.txt` - Just dependencies
+
+### What's Never Committed:
+- ❌ `ksm_config.json` - Contains encryption keys
+- ❌ `secrets/` directory - Contains JWT tokens
+- ❌ JWT signing secrets - Stored only in Keeper
 
 ## 💻 Using JWT in Your Code
 
 ### Python Example
 ```python
-# Read JWT from local file
+import json
+
+# Load config to get file paths
+with open('app_config.json', 'r') as f:
+    config = json.load(f)
+
+# Read JWT from configured location (defaults: secrets/api_access.jwt)
 with open('secrets/api_access.jwt', 'r') as f:
     jwt_token = f.read().strip()
 
@@ -151,124 +183,104 @@ headers = {'Authorization': f'Bearer {jwt_token}'}
 response = requests.get('https://api.example.com/data', headers=headers)
 ```
 
-### Node.js Example
-```javascript
-const fs = require('fs');
-const jwt_token = fs.readFileSync('secrets/api_access.jwt', 'utf8').trim();
-
-const headers = {
-    'Authorization': `Bearer ${jwt_token}`
-};
-```
-
-### Curl Example
+### Environment Variable Usage
 ```bash
-JWT_TOKEN=$(cat secrets/api_access.jwt)
+export JWT_TOKEN=$(cat secrets/api_access.jwt)
 curl -H "Authorization: Bearer $JWT_TOKEN" https://api.example.com/data
 ```
 
 ## 🔒 Security Features
 
-- ✅ **No hardcoded secrets** in application code
-- ✅ **Centralized token management** via Keeper Vault
-- ✅ **Automatic token rotation** (24-hour expiration)
-- ✅ **Secure file permissions** (600 - owner only)
-- ✅ **Token backup** before replacement
-- ✅ **Expiration validation** on retrieval
-- ✅ **Audit trail** through Keeper Vault logs
+### Centralized Secret Management:
+- ✅ **JWT signing keys** never leave Keeper Vault
+- ✅ **All configuration** stored in Keeper  
+- ✅ **Token rotation** managed centrally
+- ✅ **Access control** through Keeper permissions
 
-## ⚠️ Important Security Notes
+### Application Security:
+- ✅ **No hardcoded secrets** anywhere in code
+- ✅ **Configuration-driven** paths and settings
+- ✅ **Secure file permissions** (600)
+- ✅ **Automatic backups** before token updates
 
-1. **Never commit** `ksm_config.json` or `secrets/` to version control
-2. **Add to .gitignore**:
-   ```
-   ksm_config.json
-   secrets/
-   *.jwt
-   *.backup.*
-   ```
-3. **Rotate JWT signing key** regularly
-4. **Monitor token usage** through Keeper Vault audit logs
-5. **Revoke access** by removing users from Keeper folder
+### Audit & Monitoring:
+- ✅ **Full audit trail** through Keeper Vault logs
+- ✅ **Access tracking** for all secret retrievals
+- ✅ **Team notifications** for token updates
+
+## ⚠️ .gitignore Requirements
+
+```gitignore
+# Critical - Never commit these
+ksm_config.json
+secrets/
+*.jwt
+*.token
+*.backup.*
+*.log
+```
 
 ## 🛠️ Troubleshooting
 
-### Common Issues
+### Configuration Issues
+- **"Record not found"**: Check Record UIDs in `app_config.json`
+- **"Missing configuration"**: Update Record UIDs (remove "YOUR_" prefixes)
+- **"KSM config not found"**: Run initial setup with one-time token
 
-#### "Record not found"
-- Verify Record UID is correct
-- Check access permissions to "API Development Access" folder
-- Ensure KSM application has proper access
-
-#### "Token expired"
-- Run server script to generate new token
-- Check server script is running on schedule
-
-#### "Permission denied" on secrets file
-- Check file permissions: `ls -la secrets/`
-- Re-run local script to fix permissions
-
-#### "KSM config not found"
-- Run setup with one-time token
-- Regenerate one-time token if expired
+### JWT Issues  
+- **"Token expired"**: Run server script to generate new token
+- **"Invalid token"**: Check JWT signing secret in Keeper config record
+- **"Permission denied"**: Verify Keeper folder access permissions
 
 ### Debug Mode
-Add debug output to scripts:
+Add to scripts for troubleshooting:
 ```python
 import logging
 logging.basicConfig(level=logging.DEBUG)
 ```
 
-## 📅 Recommended Schedule
+## 📅 Production Deployment
 
-### Automated Server Tasks
-- **Daily**: Generate new JWT (cron job)
-- **Weekly**: Rotate JWT signing key
-- **Monthly**: Review access permissions
-
-### Developer Tasks
-- **Daily**: Sync JWT before starting development
-- **As needed**: Check token expiration with `local_jwt_sync.py`
-
-## 🔄 Production Deployment
-
-### Server Automation
+### Automated Server (Cron)
 ```bash
-# Add to crontab for daily token generation
-0 9 * * * /usr/bin/python3 /path/to/server_jwt_generator.py
+# Daily JWT generation
+0 9 * * * cd /path/to/jwt-system && python improved_server_jwt_generator.py
 ```
 
 ### CI/CD Integration
 ```yaml
-# Example GitHub Actions step
+# GitHub Actions example
 - name: Sync JWT Token
+  env:
+    JWT_TOKEN_RECORD_UID: ${{ secrets.JWT_TOKEN_RECORD_UID }}
+    JWT_CONFIG_RECORD_UID: ${{ secrets.JWT_CONFIG_RECORD_UID }}
   run: |
-    python local_jwt_sync.py
+    python improved_local_jwt_sync.py
     export JWT_TOKEN=$(cat secrets/api_access.jwt)
 ```
 
-## 📞 Support
+## 🎉 Benefits Summary
 
-### For Issues:
-1. Check this README troubleshooting section
-2. Verify Keeper Vault access and permissions
-3. Contact DevOps team for server-side issues
-4. Contact API Engineers team lead for access issues
+### For API Engineers:
+- ✅ **One command sync** - `python improved_local_jwt_sync.py`
+- ✅ **Always current tokens** - automatic rotation
+- ✅ **No secret management** - everything in Keeper
+- ✅ **Configurable paths** - customize to your workflow
 
-### Emergency Access:
-If JWT system is down, temporary access can be provided through:
-1. Direct Keeper Vault access to JWT record
-2. Manual JWT generation using backup methods
-3. Contact system administrator
+### For DevOps:
+- ✅ **Centralized control** - all settings in Keeper Vault
+- ✅ **Easy rotation** - update config record to change all settings
+- ✅ **Audit compliance** - full tracking through Keeper
+- ✅ **Team permissions** - fine-grained access control
 
----
+### For Security:
+- ✅ **Zero trust secrets** - nothing hardcoded anywhere
+- ✅ **Keeper vault protection** - enterprise-grade encryption
+- ✅ **Access logging** - who accessed what and when
+- ✅ **Easy revocation** - remove access via Keeper permissions
 
-## 🎉 Benefits for API Engineers
+**Ready to start?** 
 
-- ✅ **Always current tokens** - automatically rotated
-- ✅ **No manual token management** - one command sync
-- ✅ **Secure by default** - no tokens in code or repos
-- ✅ **Team visibility** - shared access through Keeper
-- ✅ **Audit trail** - all access logged in Keeper Vault
-
-**Ready to start?** Run `python local_jwt_sync.py` to get your first JWT token!
+1. Create your Keeper records
+2. Update `app_config.json` with Record UIDs  
+3. Run `python improved_local_jwt_sync.py` to get your first JWT!
