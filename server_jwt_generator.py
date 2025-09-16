@@ -19,6 +19,12 @@ KSM_CONFIG_FILE = "client-config.json"
 # Application Configuration (can be environment variables or simple config file)
 APP_CONFIG_FILE = "app_config.json"
 
+def extract_field_value(field):
+    """Extract string value from Keeper field (handles lists)"""
+    if isinstance(field, list) and len(field) > 0:
+        return field[0]
+    return field
+
 def test_existing_ksm_config():
     """Test if existing KSM configuration works"""
     
@@ -166,23 +172,40 @@ def load_jwt_config_from_keeper(secrets_manager, config_record_uid):
         }
         
         # Override with custom fields if they exist
-        for field in config_record.fields:
-            field_label = field.get('label', '').lower()
-            field_value = field.get('value', [{}])[0].get('value', '')
-            
-            if field_label == 'issuer' and field_value:
-                jwt_config['issuer'] = field_value
-            elif field_label == 'audience' and field_value:
-                jwt_config['audience'] = field_value
-            elif field_label == 'expiration_hours' and field_value:
-                try:
-                    jwt_config['expiration_hours'] = int(field_value)
-                except ValueError:
-                    pass
-            elif field_label == 'secrets_dir' and field_value:
-                jwt_config['secrets_dir'] = field_value
-            elif field_label == 'jwt_filename' and field_value:
-                jwt_config['jwt_filename'] = field_value
+        try:
+            issuer_field = config_record.custom_field('issuer')
+            if issuer_field:
+                jwt_config['issuer'] = extract_field_value(issuer_field)
+        except:
+            pass
+
+        try:
+            audience_field = config_record.custom_field('audience')
+            if audience_field:
+                jwt_config['audience'] = extract_field_value(audience_field)
+        except:
+            pass
+
+        try:
+            exp_hours_field = config_record.custom_field('expiration_hours')
+            if exp_hours_field:
+                jwt_config['expiration_hours'] = int(exp_hours_field)
+        except:
+            pass
+
+        try:
+            secrets_dir_field = config_record.custom_field('secrets_dir')
+            if secrets_dir_field:
+                jwt_config['secrets_dir'] = extract_field_value(secrets_dir_field)
+        except:
+            pass
+
+        try:
+            jwt_filename_field = config_record.custom_field('jwt_filename')
+            if jwt_filename_field:
+                jwt_config['jwt_filename'] = extract_field_value(jwt_filename_field)
+        except:
+            pass
         
         print(f"🔧 JWT Configuration loaded:")
         print(f"   Issuer: {jwt_config['issuer']}")
