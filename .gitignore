@@ -5,6 +5,10 @@
 ksm_config.json
 ksm_config_*.json
 
+# Application configuration (may contain sensitive info)
+app_config.json
+app_config_*.json
+
 # Secrets directory and all contents
 secrets/
 /secrets/
