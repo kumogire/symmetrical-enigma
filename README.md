@@ -81,16 +81,9 @@ Navigate back to **Keeper Vault** → **`API Development Access`** Folder
 
 ## 💻 Application Setup
 
-### 1. One-Time KSM Setup (Choose One Method)
+### 1. One-Time KSM Setup
 
-#### Method A: Standalone Setup (Recommended)
-```bash
-python ksm_setup_only.py
-# Enter one-time token when prompted
-```
-
-#### Method B: Setup During First Run
-The improved scripts will automatically prompt for one-time token setup if `ksm_config.json` doesn't exist.
+The improved scripts will automatically prompt for one-time token setup if `client-config.json` doesn't exist.
 
 ### 2. Configuration File Method
 
@@ -112,13 +105,13 @@ export JWT_CONFIG_RECORD_UID="def456-your-config-record-uid"
 
 #### Server Test:
 ```bash
-python server_jwt_generator.py
+python3 server_jwt_generator.py
 # Should connect automatically using existing ksm_config.json
 ```
 
 #### Local Developer Test:
 ```bash
-python local_jwt_sync.py  
+python3 local_jwt_sync.py  
 # Should connect automatically using existing ksm_config.json
 ```
 
@@ -128,7 +121,7 @@ python local_jwt_sync.py
 
 #### Generate New JWT Token
 ```bash
-python server_jwt_generator.py
+python3 server_jwt_generator.py
 ```
 
 **What happens:**
@@ -142,7 +135,7 @@ python server_jwt_generator.py
 
 #### Sync Latest JWT Token  
 ```bash
-python local_jwt_sync.py
+python3 local_jwt_sync.py
 ```
 
 **What happens:**
@@ -176,7 +169,7 @@ project/
 - ✅ `requirements.txt` - Just dependencies
 
 ### What's Never Committed:
-- ❌ `ksm_config.json` - Contains encryption keys
+- ❌ `client-config.json` - Contains encryption keys
 - ❌ `secrets/` directory - Contains JWT tokens
 - ❌ JWT signing secrets - Stored only in Keeper
 
@@ -229,7 +222,7 @@ curl -H "Authorization: Bearer $JWT_TOKEN" https://api.example.com/data
 
 ```gitignore
 # Critical - Never commit these
-ksm_config.json
+client-config.json
 secrets/
 *.jwt
 *.token
@@ -238,15 +231,6 @@ secrets/
 ```
 
 ## 🛠️ Troubleshooting
-
-### Configuration Issues
-- **"KSM config file not found"**: 
-  - **Solution 1**: Run `python ksm_setup_only.py` first
-  - **Solution 2**: The improved scripts will prompt for one-time token automatically
-  - **Solution 3**: Generate new one-time token if existing one expired
-- **"Record not found"**: Check Record UIDs in `app_config.json`
-- **"Missing configuration"**: Update Record UIDs (remove "YOUR_" prefixes)
-- **"Token already used"**: Generate a new one-time token in Keeper Admin Console
 
 ### JWT Issues  
 - **"Token expired"**: Run server script to generate new token
@@ -265,7 +249,7 @@ logging.basicConfig(level=logging.DEBUG)
 ### Automated Server (Cron)
 ```bash
 # Daily JWT generation
-0 9 * * * cd /path/to/jwt-system && python server_jwt_generator.py
+0 9 * * * cd /path/to/jwt-system && python3 server_jwt_generator.py
 ```
 
 ### CI/CD Integration
@@ -283,7 +267,7 @@ logging.basicConfig(level=logging.DEBUG)
 ## 🎉 Benefits Summary
 
 ### For API Engineers:
-- ✅ **One command sync** - `python local_jwt_sync.py`
+- ✅ **One command sync** - `python3 local_jwt_sync.py`
 - ✅ **Always current tokens** - automatic rotation
 - ✅ **No secret management** - everything in Keeper
 - ✅ **Configurable paths** - customize to your workflow
@@ -304,4 +288,4 @@ logging.basicConfig(level=logging.DEBUG)
 
 1. Create your Keeper records
 2. Update `app_config.json` with Record UIDs  
-3. Run `python local_jwt_sync.py` to get your first JWT!
+3. Run `python3 serever_jwt_generator.py` to create your first JWT!
