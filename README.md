@@ -149,11 +149,10 @@ python3 local_jwt_sync.py
 
 ```
 project/
-├── ksm_setup_only.py                   # One-time KSM setup (optional)
 ├── server_jwt_generator.py             # Server-side JWT generation
 ├── local_jwt_sync.py                   # Local JWT synchronization
 ├── app_config.json                     # Application config (Record UIDs)
-├── ksm_config.json                     # KSM config (auto-generated)
+├── client-config.json                  # KSM config (auto-generated)
 ├── secrets/                            # Local secrets directory
 │   ├── api_access.jwt                  # Current JWT token
 │   ├── api_access.jwt.backup.*         # JWT backups
@@ -288,4 +287,4 @@ logging.basicConfig(level=logging.DEBUG)
 
 1. Create your Keeper records
 2. Update `app_config.json` with Record UIDs  
-3. Run `python3 serever_jwt_generator.py` to create your first JWT!
+3. Run `python3 serever_jwt_generator.py` to create and store your first JWT!
