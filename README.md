@@ -43,18 +43,23 @@ pip install keeper-secrets-manager-core PyJWT
 
 ## 🔧 Keeper Vault Setup
 
-### 1. Create KSM Application
-1. **Keeper Vault** → **Admin Console** → **Secrets Manager**
-2. **Create Application** → **General Purpose**
-3. **Application Name**: `JWT Distribution System`
-4. **Generate One-Time Token** (save this!)
+### 1. Create Shared Folder
+1. Create folder: 
+2. **Folder Name** -> `API Development Access`
+2. **User Permissions** -> `Can Manage Users & Records`
+3. **Record Permissions** -> `Can Edit & Share`
 
-### 2. Create Shared Folder
-1. Create folder: **`API Development Access`**
-2. **Share with**: API Engineers team
-3. **Permissions**: Read for engineers, Write for server
+### 2. Create KSM Application
+1. **Keeper Vault** → **Secrets Manager**
+2. Create Application:
+3. **Application Name** -> `JWT Distribution System`
+4. **Folder Access for Application** -> `API Development Access`
+5. **Record Permissions for Application** -> `Can Edit`
+6. **Generate One-Time Token** (save this!)
 
 ### 3. Create Keeper Records
+
+Navigate back to **Keeper Vault** → **`API Development Access`** Folder
 
 #### A. JWT Configuration Record
 1. **Add Record** in "API Development Access" folder

@@ -13,11 +13,94 @@ from pathlib import Path
 from keeper_secrets_manager_core import SecretsManager
 from keeper_secrets_manager_core.storage import FileKeyValueStorage
 
-# KSM Configuration
-KSM_CONFIG_FILE = "ksm_config.json"
+# KSM Configuration - Use standard filename
+KSM_CONFIG_FILE = "client-config.json"
 
 # Application Configuration (can be environment variables or simple config file)
 APP_CONFIG_FILE = "app_config.json"
+
+def test_existing_ksm_config():
+    """Test if existing KSM configuration works"""
+    
+    if not os.path.exists(KSM_CONFIG_FILE):
+        print(f"ℹ️  No existing KSM config found ({KSM_CONFIG_FILE})")
+        return None
+    
+    print(f"✅ Found existing KSM configuration: {KSM_CONFIG_FILE}")
+    
+    try:
+        # Test the existing configuration
+        secrets_manager = SecretsManager(
+            config=FileKeyValueStorage(KSM_CONFIG_FILE)
+        )
+        
+        print("🧪 Testing existing KSM connection...")
+        
+        # Try a simple operation to verify connection works
+        # This will fail gracefully if the config is invalid
+        secrets_manager.get_secrets([])  # Empty list is safe - just tests connection
+        
+        print("✅ Existing KSM configuration works perfectly!")
+        print("ℹ️  No setup required - KSM is already configured for this project")
+        return secrets_manager
+        
+    except Exception as e:
+        print(f"⚠️  Existing KSM config has issues: {e}")
+        print("🔧 Will attempt to set up fresh configuration...")
+        return None
+
+def setup_ksm_with_token():
+    """Set up KSM using one-time token (only if existing config doesn't work)"""
+    
+    print()
+    print("🔧 Setting up new Keeper Secrets Manager configuration...")
+    print()
+    print("📝 You need a One-Time Token from Keeper Admin Console:")
+    print("   1. Keeper Vault → Secrets Manager")
+    print("   2. Create/Select Application → Create One-Time Access Token")
+    print("   3. Copy the token (format: REGION:TOKEN)")
+    print()
+    
+    one_time_token = input("Enter your One-Time Token (or press Enter to skip): ").strip()
+    
+    if not one_time_token:
+        print("❌ Setup cancelled - cannot proceed without valid KSM configuration")
+        return None
+    
+    try:
+        print("🔗 Initializing connection to Keeper...")
+        
+        # Backup existing config if it exists
+        if os.path.exists(KSM_CONFIG_FILE):
+            backup_path = f"{KSM_CONFIG_FILE}.backup.{int(datetime.datetime.now().timestamp())}"
+            os.rename(KSM_CONFIG_FILE, backup_path)
+            print(f"📁 Backed up existing config to: {backup_path}")
+        
+        # Initialize KSM with one-time token
+        secrets_manager = SecretsManager(
+            token=one_time_token,
+            config=FileKeyValueStorage(KSM_CONFIG_FILE)
+        )
+        
+        # Test the connection
+        print("🧪 Testing new configuration...")
+        secrets_manager.get_secrets([])  # Test connection
+        
+        print(f"✅ New KSM configuration saved to: {KSM_CONFIG_FILE}")
+        print("🎉 KSM setup completed successfully!")
+        return secrets_manager
+        
+    except Exception as e:
+        print(f"❌ Setup failed: {e}")
+        print()
+        if "already initialized with a different token" in str(e):
+            print("💡 This suggests there's still a configuration conflict.")
+            print("   The existing config might be from a different KSM application.")
+            print("   Options:")
+            print("   1. Use the existing config (if it works for your team)")
+            print("   2. Contact your team to understand which KSM app to use")
+            print("   3. Create a new KSM application for this project")
+        return None
 
 def load_app_config():
     """Load application configuration (Record UIDs)"""
@@ -173,7 +256,7 @@ def save_jwt_locally(token, jwt_config):
     return jwt_path
 
 def update_jwt_in_keeper(secrets_manager, token_record_uid, token, payload):
-    """Update JWT token in Keeper Vault"""
+    """Update JWT token in Keeper Vault (simulated for POC)"""
     
     try:
         print(f"☁️  Updating JWT in Keeper Vault...")
@@ -188,22 +271,16 @@ def update_jwt_in_keeper(secrets_manager, token_record_uid, token, payload):
         token_record = token_records[0]
         print(f"📋 Found token record: '{token_record.title}'")
         
-        # Note: KSM Core SDK is read-only. In production, you would:
-        # 1. Use Keeper Commander CLI with write permissions
-        # 2. Use Keeper REST API 
-        # 3. Use a webhook/automation system
-        
+        # Note: For production, you would use Keeper Commander CLI or REST API to update
         print(f"🔄 Would update record with:")
         print(f"   Password: {token[:30]}...")
         print(f"   Notes: Generated at {payload['generated_at']}")
         print(f"   Expires: {payload['exp'].isoformat()}")
         
-        # For this POC, we simulate the update
-        print(f"⚠️  Note: Actual Keeper update would happen here")
-        print(f"   Implementation options:")
-        print(f"   - Keeper Commander CLI integration")
-        print(f"   - Keeper REST API calls")
-        print(f"   - Automated workflow system")
+        print(f"💡 To actually update the record:")
+        print(f"   1. Copy the JWT token from local file")
+        print(f"   2. Paste it into the Keeper record password field")
+        print(f"   3. Update the notes with generation timestamp")
         
         return True
         
@@ -224,7 +301,7 @@ def send_notification(jwt_config, payload):
             "expiration_hours": jwt_config['expiration_hours']
         },
         "expires_at": payload['exp'].isoformat(),
-        "action_required": "Run: python local_jwt_sync.py",
+        "action_required": "Run: python improved_local_jwt_sync.py",
         "location": "Keeper Vault > API Development Access folder"
     }
     
@@ -242,11 +319,23 @@ def send_notification(jwt_config, payload):
     return True
 
 def main():
-    print("🏗️  JWT Server Generator - Keeper Configuration")
-    print("=" * 55)
+    print("🏗️  JWT Server Generator - Uses Existing KSM Configuration")
+    print("=" * 60)
     print()
     
-    # Step 1: Load app configuration
+    # Step 1: Test existing KSM configuration first
+    print("🔍 Checking for existing KSM configuration...")
+    secrets_manager = test_existing_ksm_config()
+    
+    if not secrets_manager:
+        # Only set up new config if existing one doesn't work
+        secrets_manager = setup_ksm_with_token()
+        if not secrets_manager:
+            sys.exit(1)
+    
+    print()
+    
+    # Step 2: Load app configuration  
     app_config = load_app_config()
     if not app_config:
         sys.exit(1)
@@ -258,23 +347,6 @@ def main():
     if missing_keys:
         print(f"❌ Missing configuration: {missing_keys}")
         print(f"Please update {APP_CONFIG_FILE} with actual Record UIDs")
-        sys.exit(1)
-    
-    print()
-    
-    # Step 2: Initialize KSM
-    if not os.path.exists(KSM_CONFIG_FILE):
-        print(f"❌ KSM config file not found: {KSM_CONFIG_FILE}")
-        print("Please run the KSM setup with one-time token first.")
-        sys.exit(1)
-    
-    try:
-        secrets_manager = SecretsManager(
-            config=FileKeyValueStorage(KSM_CONFIG_FILE)
-        )
-        print("✅ Connected to Keeper Secrets Manager")
-    except Exception as e:
-        print(f"❌ Failed to connect to Keeper: {e}")
         sys.exit(1)
     
     print()
@@ -304,7 +376,7 @@ def main():
     local_path = save_jwt_locally(token, jwt_config)
     print()
     
-    # Step 7: Update Keeper
+    # Step 7: Update Keeper (simulated)
     print("☁️  Updating JWT in Keeper Vault...")
     keeper_success = update_jwt_in_keeper(
         secrets_manager, 
@@ -321,10 +393,11 @@ def main():
     
     # Summary
     print("📊 Generation Summary:")
+    print(f"   ✅ KSM connection: Using {KSM_CONFIG_FILE}")
     print(f"   ✅ JWT configuration: Loaded from Keeper")
     print(f"   ✅ JWT generated: {jwt_config['expiration_hours']} hour expiration")
     print(f"   ✅ Saved locally: {local_path}")
-    print(f"   {'✅' if keeper_success else '⚠️ '} Keeper update: {'Success' if keeper_success else 'Manual step required'}")
+    print(f"   ⚠️  Keeper update: Manual step required")
     print(f"   ✅ Team notification: Sent")
     print()
     
@@ -332,8 +405,8 @@ def main():
     print(f"📅 Token expires: {payload['exp'].strftime('%Y-%m-%d %H:%M:%S')} UTC")
     print()
     print("💡 Next steps:")
-    print("   1. Manually update the JWT token record in Keeper Vault (if needed)")
-    print("   2. API Engineers can run: python local_jwt_sync.py")
+    print("   1. Manually update the JWT token record in Keeper Vault")
+    print("   2. API Engineers can run: python improved_local_jwt_sync.py")
 
 if __name__ == "__main__":
     main()

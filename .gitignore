@@ -2,8 +2,8 @@
 # CRITICAL: Never commit these files to version control
 
 # Keeper Secrets Manager configuration
-ksm_config.json
-ksm_config_*.json
+client-config.json
+client-config_*.json
 
 # Application configuration (may contain sensitive info)
 app_config.json
